@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ANT-CONTRIB
+required for this build process
+http://sourceforge.net/projects/ant-contrib
+-->
+<project name="admin" default="1. Deploy Complete Site" basedir="../">
+
+    <!--Adds the ANT Library addons to script-->
+    <taskdef resource="net/sf/antcontrib/antlib.xml">
+        <classpath>
+            <pathelement location="C:/ant/ant-contrib-1.0b3.jar"/>
+        </classpath>
+    </taskdef>
+    <!--Looks for config build files  -if_windows_lftp, -if_mac_lftp,  -->
+    <target name="-buildOption" depends="-if_windows_lftp, -if_mac_lftp">
+        <description>
+            Switches between properties files.
+        </description>
+        <property file="config.build.properties"/>
+        <input message="Select a build option" addproperty="admin.build.opt" defaultvalue="dev" validargs="${admin.targets}"/>
+        <echo message="config: config.${admin.build.opt}.properties"/>
+        <property file="config.${admin.build.opt}.properties"/>
+        <echo message="domain: ${lftp.serveradd}"/>
+	
+    </target>
+    
+    
+	
+    <!--Detects which OS you work with-->
+    <target name="-checkos">
+        <condition property="isWindows">
+            <os family="windows" />
+        </condition>
+        <condition property="isMac">
+            <os family="mac" />
+        </condition>
+    </target>
+
+
+	
+    <!--Windows lftp-->
+    <target name="-if_windows_lftp" depends="-checkos" if="isWindows">
+        <echo message="Windows Build Detected - setting appropriate path properties"/>
+        <property id="admin.path.lftp" name="admin.path.lftp" value="lftp"/>
+        <property id="admin.lftp.args" name="admin.lftp.chmod.args" value="-p --no-perms"/>
+        <property id="admin.path.php" name="admin.path.php" value="lftp"/>
+    </target>
+
+    <!--MAC lftp-->
+    <target name="-if_mac_lftp" depends="-checkos" if="isMac">
+        <echo message="Mac Build Detected - setting appropriate path properties"/>
+        <property id="admin.path.lftp" name="admin.path.lftp" value="lftp"/>
+        <property id="admin.lftp.connection" name="admin.lftp.connection" value="sftp://${admin.lftp.user.password}@${admin.lftp.server.ip}"/>
+        <property id="admin.lftp.args" name="admin.lftp.args" value="mirror -v -e -R"/>
+        <property id="admin.path.php" name="admin.path.php" value="php"/>
+    </target>
+	
+    <!-- Gives option to DRY RUN LFTP-->
+    <target name="-check-dry-run-lftp">
+        <input message="Dry run?" addproperty="admin.dryrun" defaultvalue="yes" validargs="yes,no"/>
+        <if>
+            <equals arg1="${admin.dryrun}" arg2="no" />
+            <then>
+                <property id="admin.lftp.args" name="admin.lftp.args" value=""/>
+            </then>
+            <else>
+                <property id="admin.lftp.args" name="admin.lftp.args" value="--dry-run"/>
+                <echo message="*DRY RUN ONLY*"/>
+            </else>
+        </if>
+    </target>
+	
+    <!--Sure you want to do your actions?-->
+    <target name="-are-you-sure">
+        <input message="Are you sure - this operation can not be undone..." defaultvalue="no" validargs="yes,no" addproperty="do.it"/>
+        <if>
+            <equals arg1="${do.it}" arg2="no" />
+            <then>
+                <fail message="aborted"/>
+            </then>
+        </if>
+    </target>
+	
+    <!--Will Deploy complete site from LOCAL with no permissions attached
+        <target name="1. Deploy Complete Site" depends="-buildOption, -checkos, -check-dry-run-lftp">
+            <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd}; mirror -R -v - -parallel=10 - -delete-first ${admin.lftp.args} fullsite ${lftp.remote.dir}; quit"'/>
+            <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+                <arg value='mirror -R -v - -parallel=3 -p - -no-perms - -delete ${admin.lftp.args}'></arg>
+                <arg value='fullsite '></arg>
+                <arg value='${lftp.remote.dir}; quit"'></arg>
+            </exec>
+        </target>
+    -->
+    
+    <!--Will Pull Complete site from REMOTE with no permissions attached-
+        <target name="2. Pull Complete Site" depends="-buildOption, -checkos, -check-dry-run-lftp">
+            <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd}; mirror -R -v - -parallel=${lftp.transfer.speed} -p - -no-perms - -delete ${admin.lftp.args} ${lftp.remote.dir} fullsite; quit"'/>
+            <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+                <arg value='mirror -v - -parallel=${lftp.transfer.speed} -p - -no-perms - -delete ${admin.lftp.args}'></arg>
+                <arg value='${lftp.remote.dir} '></arg>
+                <arg value='fullsite; quit"'></arg>
+            </exec>
+        </target>
+    -->
+
+    <target name="1. RSYNC Deploy" depends="-buildOption, -checkos, -check-dry-run-lftp" >
+        <echo message='> rsync -avzh --stats ${rsync.selected.local1}/* ${rsync.selected.remote1}'/>
+        <exec executable="rsync" dir="." failonerror="true">
+            <arg value="-avzhrtu"/>
+            <!--<arg value="- -progress"/>-->
+            <arg value="--stats"/>
+            <arg value="--delete"/>
+            <arg value="${rsync.selected.local1}/"/>
+            <arg value="${rsync.selected.remote1}"/>
+            <!--<arg value="${username}@${host}:${dir}"/>-->
+            <!--<arg value="- -exclude-from=rsync.excludes"/>-->
+            <!--<arg value="-v"/>-->
+        </exec>
+    </target>
+    
+    <target name="2. RSYNC Retrieve" depends="-buildOption, -checkos, -check-dry-run-lftp" >
+        <echo message='> rsync -avzhrtu --stats ${rsync.selected.remote1}/* ${rsync.selected.local1}'/>
+        <exec executable="rsync" dir="." failonerror="true">
+            <arg value="-avzhrtu"/>
+            <!--<arg value="- -progress"/>-->
+            <!--<arg value="- -no-perms"/>-->
+            <!--<arg value="- -recursive"/>-->
+            <arg value="--stats"/>
+            <arg value="--delete"/>
+            <arg value="${rsync.selected.local1}/*"/>
+            <arg value="${rsync.selected.remote1}"/>
+            <!--<arg value="${username}@${host}:${dir}"/>-->
+            <!--<arg value="- -exclude-from=rsync.excludes"/>-->
+            <!--<arg value="-v"/>-->
+        </exec>
+    </target>
+    
+    <target name="1.1 RSYNC Plugins Deploy" depends="-buildOption, -checkos, -check-dry-run-lftp" >
+        <echo message='> rsync -avzhrtu --stats --delete  ${rsync.selected.plugins.local1}/ ${rsync.selected.plugins.remote1}'/>
+        <exec executable="rsync" dir="." failonerror="true">
+            <arg value="-avzhrtu"/>
+            <!--<arg value="- -progress"/>-->
+            <!--<arg value="- -ignore-existing"/>-->
+            <!--<arg value="- -no-perms"/>-->
+            <!--<arg value="- -recursive"/>-->
+            <arg value="--stats"/>
+            <arg value="--delete"/>
+            <arg value="${rsync.selected.plugins.local1}/"/>
+            <arg value="${rsync.selected.plugins.remote1}"/>
+            <!--<arg value="${username}@${host}:${dir}"/>-->
+            <!--<arg value="- -exclude-from=rsync.excludes"/>-->
+            <!--<arg value="-v"/>-->
+        </exec>
+    </target>
+    
+    <target name="2.1 RSYNC Plugin Retrieve" depends="-buildOption, -checkos, -check-dry-run-lftp" >
+        <echo message='> rsync -avzphrtu --stats --delete ${rsync.selected.plugins.remote1}/ ${rsync.selected.plugins.local1}'/>
+        <exec executable="rsync" dir="." failonerror="true">
+            <arg value="-avzphrtu"/>
+            <!--<arg value="- -progress"/>-->
+            <!--<arg value="- -ignore-existing"/>-->
+            <arg value="--stats"/>
+            <arg value="--delete"/>
+            <arg value="${rsync.selected.plugins.remote1}/"/>
+            <arg value="${rsync.selected.plugins.local1}"/>
+            <!--<arg value="${username}@${host}:${dir}"/>-->
+            <!--<arg value="- -exclude-from=rsync.excludes"/>-->
+            <!--<arg value="-v"/>-->
+        </exec>
+    </target>
+
+    
+    <!--Will Deploy the themes directory from LOCAL with no permissions attached to files-->
+    <target name="3. Deploy WP Themes" depends="-buildOption, -checkos, -check-dry-run-lftp">
+        <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd}; ${lftp.activate.ssl.check} mirror -R -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} -p --no-perms ${lftp.selected.local1} ${lftp.selected.remote1}; quit"'/>
+        <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+            <arg value='${lftp.activate.ssl.check} mirror -R -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} '></arg>
+            <arg value='${lftp.selected.local1} '></arg>
+            <arg value='${lftp.selected.remote1}; quit"'></arg>
+        </exec>
+    </target>
+    
+    <!--Will Pull the themes directory from REMOTE with no permissions attached to files-->
+    <target name="4. Pull WP Themes" depends="-buildOption, -checkos, -check-dry-run-lftp">
+        <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd}; ${lftp.activate.ssl.check} mirror -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} ${lftp.selected.local1} ${lftp.selected.remote1}; quit"'/>	
+        <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+            <arg value='${lftp.activate.ssl.check} mirror -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args}'></arg>
+            <arg value='${lftp.selected.remote1} '></arg>
+            <arg value='${lftp.selected.local1}; quit"'></arg>
+        </exec>
+    </target>
+    
+    <!--Will Deploy the Plugins directory from LOCAL with no permissions attached to files-->
+    <target name="5. Deploy Plugins" depends="-buildOption, -checkos, -check-dry-run-lftp">
+        <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd}; ${lftp.activate.ssl.check} mirror -R -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} -p --no-perms ${lftp.selected.plugins.local1} ${lftp.selected.plugins.remote1}; quit"'/>
+        <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+            <arg value='${lftp.activate.ssl.check} mirror -R -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} '></arg>
+            <arg value='${lftp.selected.plugins.local1} '></arg>
+            <arg value='${lftp.selected.plugins.remote1}; quit"'></arg>
+        </exec>
+    </target>
+    
+    <!--Will Pull the plugins directory from REMOTE with no permissions attached to files-->
+    <target name="6. Pull Plugins" depends="-buildOption, -checkos, -check-dry-run-lftp">
+        <echo message='> lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};${lftp.activate.ssl.check} mirror -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args} ${lftp.selected.plugins.local1} ${lftp.selected.plugins.remote1}; quit"'/>	
+        <exec executable='lftp -v -c "open -u ${lftp.uname},${lftp.pword} ${lftp.serveradd};' dir=".">
+            <arg value='${lftp.activate.ssl.check} mirror -v --parallel=${lftp.transfer.speed} -p --no-perms --delete ${admin.lftp.args}'></arg>
+            <arg value='${lftp.selected.plugins.remote1} '></arg>
+            <arg value='${lftp.selected.plugins.local1}; quit"'></arg>
+        </exec>
+    </target>
+    
+    
+    <!--Backup the sites database-
+        <target name="7. Backup Database" depends="-buildOption">  
+            <echo message="> mysqldump -u${db.username} -p${db.password} -h${db.host} - -port=${db.port} > ${db.name}.sql"/>
+            <exec executable="mysqldump" output="${db.name}.sql">  
+                <arg value="-u${db.username}" />  
+                <arg value="-p${db.password}" />  
+                <arg value="-h${db.host}" />  
+                <arg value="- -port=${db.port}" />  
+                <arg value="${db.name}" />  
+            </exec>  
+        </target>
+    -->
+    
+    <!--Restore the sites database-
+        <target name="8. Restore Database" depends="-buildOption">
+            <echo message="${db.name}.sql > mysql -u${db.username} -p${db.password} -h${db.host} - -port=${db.port}"/>
+            <exec executable="mysql" failonerror="true" input="${db.name}.sql">
+                <arg value="-u${db.username}" />  
+                <arg value="-p${db.password}" />  
+                <arg value="-h${db.host}" />  
+                <arg value="- -port=${db.port}" />  
+                <arg value="${db.name}" />  
+            </exec>
+        </target>
+    -->
+    
+</project>
